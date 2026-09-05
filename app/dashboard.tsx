@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDownRight, ArrowUpRight, CalendarDays, Car, Check, CircleDollarSign, CreditCard, FileUp, Flag, Fuel, Gauge, LayoutDashboard, Menu, Pencil, Plus, Target, Trash2, WalletCards, Wrench, X } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, CalendarDays, Car, Check, CircleDollarSign, CreditCard, FileUp, Flag, Fuel, Gauge, LayoutDashboard, LogOut, Menu, Pencil, Plus, Target, Trash2, WalletCards, Wrench, X } from "lucide-react";
 
 type Tx = { id: number; description: string; amount: number; type: "income" | "expense"; category: string; date: string };
 type Goal = { id: number; name: string; targetAmount: number; savedAmount: number; dueDate?: string };
@@ -14,7 +14,7 @@ type Data = { transactions: Tx[]; goals: Goal[]; commitments: Commitment[]; driv
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const today = new Date().toISOString().slice(0, 10);
 
-export default function Dashboard({ displayName }: { displayName: string }) {
+export default function Dashboard({ displayName, apiToken, onSignOut }: { displayName: string; apiToken: string; onSignOut: () => void }) {
   const [data, setData] = useState<Data>({ transactions: [], goals: [], commitments: [], driverDays: [], cards: [], cardPurchases: [] });
   const [view, setView] = useState("visao");
   const [modal, setModal] = useState<null | "transaction" | "goal" | "commitment" | "driverDay" | "card">(null);
@@ -24,14 +24,18 @@ export default function Dashboard({ displayName }: { displayName: string }) {
   const [editing, setEditing] = useState<{ entity: "transaction" | "commitment" | "cardPurchase"; item: Tx | Commitment | CardPurchase } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  function apiFetch(init: RequestInit = {}) {
+    return fetch("/api/finance", { ...init, headers: { ...init.headers, Authorization: `Bearer ${apiToken}` } });
+  }
+
   async function load() {
-    const response = await fetch("/api/finance", { cache: "no-store" });
+    const response = await apiFetch({ cache: "no-store" });
     const body = await response.json();
     if (response.ok) setData(body);
     else setMessage("Não foi possível carregar seus dados.");
     setLoading(false);
   }
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [apiToken]);
 
   const summary = useMemo(() => {
     const month = today.slice(0, 7);
@@ -43,7 +47,7 @@ export default function Dashboard({ displayName }: { displayName: string }) {
   }, [data]);
 
   async function save(payload: Record<string, unknown>) {
-    const response = await fetch("/api/finance", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    const response = await apiFetch({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error || "Não foi possível salvar.");
     await load(); setModal(null); setMessage("Salvo com sucesso.");
@@ -51,7 +55,7 @@ export default function Dashboard({ displayName }: { displayName: string }) {
   }
 
   async function update(payload: Record<string, unknown>) {
-    const response = await fetch("/api/finance", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    const response = await apiFetch({ method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error || "Não foi possível atualizar.");
     await load(); setEditing(null); setMessage("Atualizado com sucesso.");
@@ -59,7 +63,7 @@ export default function Dashboard({ displayName }: { displayName: string }) {
   }
 
   async function remove(entity: "transaction" | "commitment" | "cardPurchase", id: number) {
-    const response = await fetch("/api/finance", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entity, id }) });
+    const response = await apiFetch({ method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entity, id }) });
     const body = await response.json();
     if (!response.ok) {
       setMessage(body.error || "Não foi possível excluir.");
@@ -108,6 +112,7 @@ export default function Dashboard({ displayName }: { displayName: string }) {
       <button className="close-menu" onClick={() => setMenuOpen(false)} aria-label="Fechar menu"><X /></button>
       <nav>{nav.map(([id, label, Icon]) => <button key={id} className={view === id ? "active" : ""} onClick={() => { setView(id); setMenuOpen(false); }}><Icon />{label}</button>)}</nav>
       <div className="sidebar-note"><span>Seu mês</span><strong>{summary.available >= 0 ? "Dentro do plano" : "Atenção ao limite"}</strong><small>{money.format(summary.available)} livres após compromissos</small></div>
+      <button className="signout-button" onClick={onSignOut}><LogOut/>Sair da conta</button>
     </aside>
     {menuOpen && <button className="backdrop" onClick={() => setMenuOpen(false)} aria-label="Fechar menu" />}
 
