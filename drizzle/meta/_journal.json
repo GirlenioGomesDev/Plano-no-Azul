@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1788630269079,
+      "tag": "0000_right_praxagora",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1788630793213,
+      "tag": "0001_grey_nicolaos",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788631343355,
+      "tag": "0002_big_ultron",
+      "breakpoints": true
+    }
+  ]
+}
