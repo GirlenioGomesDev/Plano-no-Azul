@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDownRight, ArrowUpRight, CalendarDays, Car, Check, CircleDollarSign, CreditCard, FileUp, Flag, Fuel, Gauge, LayoutDashboard, LogOut, Menu, Pencil, Plus, Target, Trash2, WalletCards, Wrench, X } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, CalendarDays, Car, Check, CircleDollarSign, CreditCard, FileUp, Flag, Fuel, Gauge, Landmark, LayoutDashboard, LogOut, Menu, Pencil, PiggyBank, Plus, Target, Trash2, TrendingUp, WalletCards, Wrench, X } from "lucide-react";
 
 type Tx = { id: number; description: string; amount: number; type: "income" | "expense"; category: string; date: string };
 type Goal = { id: number; name: string; targetAmount: number; savedAmount: number; dueDate?: string };
@@ -9,19 +9,20 @@ type Commitment = { id: number; name: string; kind: "bill" | "debt"; amount: num
 type DriverDay = { id: number; date: string; grossEarnings: number; rides: number; hoursWorked: number; odometerStart: number; odometerEnd: number; kilometers: number; fuelCost: number; maintenanceCost: number; otherCost: number; notes: string };
 type Card = { id: number; name: string; lastFour: string; color: string; creditLimit: number; closingDay: number; dueDay: number };
 type CardPurchase = { id: number; cardId: number; description: string; totalAmount: number; installments: number; purchaseDate: string; category: string };
-type Data = { transactions: Tx[]; goals: Goal[]; commitments: Commitment[]; driverDays: DriverDay[]; cards: Card[]; cardPurchases: CardPurchase[] };
+type Asset = { id: number; name: string; kind: "savings" | "investment"; institution: string; principal: number; currentBalance: number; annualRate: number; updatedDate: string };
+type Data = { transactions: Tx[]; goals: Goal[]; commitments: Commitment[]; driverDays: DriverDay[]; cards: Card[]; cardPurchases: CardPurchase[]; assets: Asset[] };
 
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const today = new Date().toISOString().slice(0, 10);
 
 export default function Dashboard({ displayName, apiToken, onSignOut }: { displayName: string; apiToken: string; onSignOut: () => void }) {
-  const [data, setData] = useState<Data>({ transactions: [], goals: [], commitments: [], driverDays: [], cards: [], cardPurchases: [] });
+  const [data, setData] = useState<Data>({ transactions: [], goals: [], commitments: [], driverDays: [], cards: [], cardPurchases: [], assets: [] });
   const [view, setView] = useState("visao");
-  const [modal, setModal] = useState<null | "transaction" | "goal" | "commitment" | "driverDay" | "card">(null);
+  const [modal, setModal] = useState<null | "transaction" | "goal" | "commitment" | "driverDay" | "card" | "asset">(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
-  const [editing, setEditing] = useState<{ entity: "transaction" | "commitment" | "cardPurchase"; item: Tx | Commitment | CardPurchase } | null>(null);
+  const [editing, setEditing] = useState<{ entity: "transaction" | "commitment" | "cardPurchase" | "asset"; item: Tx | Commitment | CardPurchase | Asset } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   function apiFetch(init: RequestInit = {}) {
@@ -62,7 +63,7 @@ export default function Dashboard({ displayName, apiToken, onSignOut }: { displa
     window.setTimeout(() => setMessage(""), 2500);
   }
 
-  async function remove(entity: "transaction" | "commitment" | "cardPurchase", id: number) {
+  async function remove(entity: "transaction" | "commitment" | "cardPurchase" | "asset", id: number) {
     const response = await apiFetch({ method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entity, id }) });
     const body = await response.json();
     if (!response.ok) {
@@ -103,7 +104,7 @@ export default function Dashboard({ displayName, apiToken, onSignOut }: { displa
 
   const nav = [
     ["visao", "Visão geral", LayoutDashboard], ["movimentacoes", "Movimentações", WalletCards],
-    ["contas", "Contas e dívidas", CalendarDays], ["cartoes", "Cartões", CreditCard], ["metas", "Metas", Target], ["motorista", "99 Motorista", Car],
+    ["contas", "Contas e dívidas", CalendarDays], ["cartoes", "Cartões", CreditCard], ["reservas", "Dinheiro guardado", PiggyBank], ["metas", "Metas", Target], ["motorista", "99 Motorista", Car],
   ] as const;
 
   return <div className="app-shell">
@@ -133,6 +134,7 @@ export default function Dashboard({ displayName, apiToken, onSignOut }: { displa
       {view === "movimentacoes" && <TransactionList items={data.transactions} loading={loading} onEdit={(item) => setEditing({ entity: "transaction", item })} full />}
       {view === "contas" && <CommitmentList items={data.commitments} onAdd={() => setModal("commitment")} onEdit={(item) => setEditing({ entity: "commitment", item })} onPay={(item) => update({ entity: "commitment", id: item.id, action: "pay" })} full />}
       {view === "cartoes" && <CardsView cards={data.cards} purchases={data.cardPurchases} onAdd={() => setModal("card")} onPurchase={() => setModal("transaction")} onEdit={(item) => setEditing({ entity: "cardPurchase", item })} />}
+      {view === "reservas" && <AssetsView items={data.assets} onAdd={() => setModal("asset")} onEdit={(item) => setEditing({ entity: "asset", item })} />}
       {view === "metas" && <GoalList items={data.goals} onAdd={() => setModal("goal")} full />}
       {view === "motorista" && <DriverView items={data.driverDays} onAdd={() => setModal("driverDay")} />}
     </main>
@@ -160,6 +162,15 @@ function GoalList({ items, onAdd, full }: { items: Goal[]; onAdd: () => void; fu
     {!items.length ? <div className="empty horizontal"><Flag/><div><strong>Crie seu primeiro objetivo</strong><span>Defina um valor e acompanhe sua evolução.</span></div></div> :
     <div className="goals-grid">{items.map((g) => { const pct = Math.min(100, Math.round((g.savedAmount / g.targetAmount) * 100)); return <article key={g.id}><div><strong>{g.name}</strong><span>{pct}%</span></div><div className="progress"><i style={{ width: `${pct}%` }}/></div><p>{money.format(g.savedAmount)} de {money.format(g.targetAmount)}</p></article>; })}</div>}
   </section>;
+}
+
+function AssetsView({ items, onAdd, onEdit }: { items: Asset[]; onAdd: () => void; onEdit: (item: Asset) => void }) {
+  const saved=items.filter(x=>x.kind==="savings").reduce((s,x)=>s+x.currentBalance,0),invested=items.filter(x=>x.kind==="investment").reduce((s,x)=>s+x.currentBalance,0),gain=items.reduce((s,x)=>s+(x.currentBalance-x.principal),0);
+  return <div className="assets-page"><section className="assets-hero"><div><span>Seu patrimônio financeiro</span><strong>{money.format(saved+invested)}</strong><small>Dinheiro guardado e investimentos</small></div><button className="primary" onClick={onAdd}><Plus/>Adicionar reserva</button></section>
+    <section className="asset-summary"><article><PiggyBank/><div><span>Guardado</span><strong>{money.format(saved)}</strong></div></article><article><Landmark/><div><span>Investido</span><strong>{money.format(invested)}</strong></div></article><article className={gain>=0?"positive":"negative"}><TrendingUp/><div><span>Rendimento acumulado</span><strong>{gain>=0?"+ ":""}{money.format(gain)}</strong></div></article></section>
+    <section className="panel"><div className="panel-title"><div><h2>Reservas e investimentos</h2><p>Acompanhe onde está seu dinheiro e quanto ele rendeu</p></div><button className="round" onClick={onAdd}><Plus/></button></div>
+      {!items.length?<div className="empty"><PiggyBank/><strong>Nenhum dinheiro guardado</strong><span>Cadastre uma poupança, reserva ou investimento.</span><button className="primary empty-action" onClick={onAdd}>Adicionar agora</button></div>:<div className="asset-list">{items.map(x=>{const result=x.currentBalance-x.principal,monthly=x.currentBalance*(x.annualRate/100)/12;return <article key={x.id}><div className={`asset-icon ${x.kind}`} >{x.kind==="savings"?<PiggyBank/>:<TrendingUp/>}</div><div className="asset-info"><strong>{x.name}</strong><span>{x.kind==="savings"?"Dinheiro guardado":"Investimento"}{x.institution?` · ${x.institution}`:""}</span><small>Atualizado em {new Date(x.updatedDate+"T12:00:00").toLocaleDateString("pt-BR")}</small></div><div className="asset-numbers"><strong>{money.format(x.currentBalance)}</strong><span className={result>=0?"income":"expense"}>{result>=0?"Rendeu ":"Variação "}{money.format(result)}</span>{x.annualRate>0&&<small>≈ {money.format(monthly)}/mês pela taxa informada</small>}</div><button className="edit-button" onClick={()=>onEdit(x)} aria-label="Editar reserva ou investimento"><Pencil/></button></article>;})}</div>}
+    </section></div>;
 }
 
 function CardsView({ cards, purchases, onAdd, onPurchase, onEdit }: { cards: Card[]; purchases: CardPurchase[]; onAdd: () => void; onPurchase: () => void; onEdit: (item: CardPurchase) => void }) {
@@ -222,7 +233,7 @@ function DriverView({ items, onAdd }: { items: DriverDay[]; onAdd: () => void })
   </div>;
 }
 
-function EditModal({ editing, onClose, onSave, onDelete }: { editing: { entity: "transaction" | "commitment" | "cardPurchase"; item: Tx | Commitment | CardPurchase }; onClose: () => void; onSave: (x: Record<string, unknown>) => Promise<void>; onDelete: () => Promise<void> }) {
+function EditModal({ editing, onClose, onSave, onDelete }: { editing: { entity: "transaction" | "commitment" | "cardPurchase" | "asset"; item: Tx | Commitment | CardPurchase | Asset }; onClose: () => void; onSave: (x: Record<string, unknown>) => Promise<void>; onDelete: () => Promise<void> }) {
   const [saving, setSaving] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -232,16 +243,17 @@ function EditModal({ editing, onClose, onSave, onDelete }: { editing: { entity: 
     finally { setSaving(false); }
   }
   const categories = <><option>Alimentação</option><option>Moradia</option><option>Transporte</option><option>Saúde</option><option>Lazer</option><option>Salário</option><option>Outros</option></>;
-  return <div className="modal-backdrop"><form className="modal" onSubmit={submit}><div className="modal-head"><div><h2>Editar {editing.entity === "transaction" ? "movimentação" : editing.entity === "commitment" ? "conta ou parcela" : "compra no cartão"}</h2><p>As alterações atualizam seus cálculos automaticamente.</p></div><button type="button" onClick={onClose}><X/></button></div>
+  return <div className="modal-backdrop"><form className="modal" onSubmit={submit}><div className="modal-head"><div><h2>Editar {editing.entity === "transaction" ? "movimentação" : editing.entity === "commitment" ? "conta ou parcela" : editing.entity === "asset" ? "reserva ou investimento" : "compra no cartão"}</h2><p>As alterações atualizam seus cálculos automaticamente.</p></div><button type="button" onClick={onClose}><X/></button></div>
     {editing.entity === "transaction" && (() => { const item = editing.item as Tx; return <><label>Descrição<input name="description" required defaultValue={item.description}/></label><div className="form-grid"><label>Tipo<select name="type" defaultValue={item.type}><option value="expense">Despesa</option><option value="income">Receita</option></select></label><label>Valor<input name="amount" required min="0.01" step="0.01" type="number" defaultValue={item.amount}/></label></div><div className="form-grid"><label>Categoria<select name="category" defaultValue={item.category}>{categories}</select></label><label>Data<input name="date" required type="date" defaultValue={item.date}/></label></div></>; })()}
     {editing.entity === "commitment" && (() => { const item = editing.item as Commitment; return <><label>Nome<input name="name" required defaultValue={item.name}/></label><div className="form-grid"><label>Valor da parcela/conta<input name="amount" required min="0.01" step="0.01" type="number" defaultValue={item.amount}/></label><label>Vencimento atual<input name="dueDate" required type="date" defaultValue={item.dueDate}/></label></div><div className="form-grid"><label>Total de parcelas<input name="installmentsTotal" min="1" type="number" defaultValue={item.installmentsTotal ?? 1}/></label><label>Parcelas já pagas<input name="installmentsPaid" min="0" type="number" defaultValue={item.installmentsPaid ?? 0}/></label></div><label>Situação<select name="status" defaultValue={item.status}><option value="pending">Pendente</option><option value="paid">Pago</option></select></label></>; })()}
     {editing.entity === "cardPurchase" && (() => { const item = editing.item as CardPurchase; return <><label>Descrição<input name="description" required defaultValue={item.description}/></label><div className="form-grid"><label>Valor total<input name="totalAmount" required min="0.01" step="0.01" type="number" defaultValue={item.totalAmount}/></label><label>Quantidade de parcelas<input name="installments" required min="1" max="48" type="number" defaultValue={item.installments}/></label></div><div className="form-grid"><label>Categoria<select name="category" defaultValue={item.category}>{categories}</select></label><label>Data da compra<input name="purchaseDate" required type="date" defaultValue={item.purchaseDate}/></label></div></>; })()}
+    {editing.entity === "asset" && (() => { const item=editing.item as Asset;return <><label>Nome<input name="name" required defaultValue={item.name}/></label><div className="form-grid"><label>Tipo<select name="kind" defaultValue={item.kind}><option value="savings">Dinheiro guardado</option><option value="investment">Investimento</option></select></label><label>Banco ou instituição<input name="institution" defaultValue={item.institution}/></label></div><div className="form-grid"><label>Valor aplicado/guardado<input name="principal" required min="0" step="0.01" type="number" defaultValue={item.principal}/></label><label>Saldo atual<input name="currentBalance" required min="0" step="0.01" type="number" defaultValue={item.currentBalance}/></label></div><div className="form-grid"><label>Rendimento ao ano (%)<input name="annualRate" min="0" step="0.01" type="number" defaultValue={item.annualRate}/></label><label>Data da atualização<input name="updatedDate" required type="date" defaultValue={item.updatedDate}/></label></div></>;})()}
     {confirmingDelete && <p className="delete-warning">Toque novamente para confirmar. Esta ação não poderá ser desfeita.</p>}
     <div className="modal-actions split-actions"><button type="button" className={`delete-button ${confirmingDelete ? "confirming" : ""}`} disabled={deleting} onClick={async () => { if (!confirmingDelete) { setConfirmingDelete(true); return; } setDeleting(true); try { await onDelete(); } finally { setDeleting(false); } }}><Trash2/>{deleting ? "Excluindo..." : confirmingDelete ? "Confirmar exclusão" : "Excluir"}</button><div><button type="button" className="secondary" onClick={onClose}>Cancelar</button><button className="primary" disabled={saving || deleting}>{saving ? "Salvando..." : "Salvar alterações"}</button></div></div>
   </form></div>;
 }
 
-function Modal({ type, cards, onClose, onSave }: { type: "transaction" | "goal" | "commitment" | "driverDay" | "card"; cards: Card[]; onClose: () => void; onSave: (x: Record<string, unknown>) => Promise<void> }) {
+function Modal({ type, cards, onClose, onSave }: { type: "transaction" | "goal" | "commitment" | "driverDay" | "card" | "asset"; cards: Card[]; onClose: () => void; onSave: (x: Record<string, unknown>) => Promise<void> }) {
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [saving, setSaving] = useState(false);
   async function submit(e: React.FormEvent<HTMLFormElement>) {
@@ -249,13 +261,14 @@ function Modal({ type, cards, onClose, onSave }: { type: "transaction" | "goal" 
     const values = Object.fromEntries(new FormData(e.currentTarget).entries());
     try { await onSave({ entity: type, ...values }); } finally { setSaving(false); }
   }
-  const title = type === "transaction" ? "Novo lançamento" : type === "goal" ? "Nova meta" : type === "driverDay" ? "Registrar dia na 99" : type === "card" ? "Adicionar cartão" : "Nova conta ou dívida";
+  const title = type === "transaction" ? "Novo lançamento" : type === "goal" ? "Nova meta" : type === "driverDay" ? "Registrar dia na 99" : type === "card" ? "Adicionar cartão" : type === "asset" ? "Adicionar dinheiro guardado" : "Nova conta ou dívida";
   return <div className="modal-backdrop"><form className="modal" onSubmit={submit}><div className="modal-head"><div><h2>{title}</h2><p>Preencha apenas as informações principais.</p></div><button type="button" onClick={onClose}><X/></button></div>
     {type === "transaction" && <><label>Descrição<input name="description" required placeholder="Ex.: Salário ou supermercado"/></label><div className="form-grid"><label>Tipo<select name="type"><option value="expense">Despesa</option><option value="income">Receita</option></select></label><label>Valor total<input name="amount" required min="0.01" step="0.01" type="number" placeholder="0,00"/></label></div><div className="form-grid"><label>Categoria<select name="category"><option>Alimentação</option><option>Moradia</option><option>Transporte</option><option>Saúde</option><option>Lazer</option><option>Salário</option><option>Outros</option></select></label><label>Data<input name="date" required type="date" defaultValue={today}/></label></div><label>Forma de pagamento<select name="paymentMethod" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}><option value="cash">À vista / débito / Pix</option><option value="credit">Parcelado no cartão</option><option value="installment">Parcelado sem cartão</option></select></label>{paymentMethod === "credit" && <div className="credit-fields"><div className="form-grid"><label>Cartão<select name="cardId" required><option value="">Escolha o cartão</option>{cards.map((card) => <option value={card.id} key={card.id}>{card.name} •••• {card.lastFour}</option>)}</select></label><label>Parcelas<input name="installments" required min="1" max="48" type="number" defaultValue="1"/></label></div>{!cards.length && <p className="form-warning">Adicione um cartão antes de registrar uma compra parcelada.</p>}</div>}{paymentMethod === "installment" && <div className="credit-fields"><div className="form-grid"><label>Quantidade de parcelas<input name="installments" required min="2" max="60" type="number" defaultValue="2"/></label><label>Primeiro vencimento<input name="firstDueDate" required type="date" defaultValue={today}/></label></div><p className="installment-note">A compra aparecerá em Contas e dívidas com o valor de cada parcela.</p></div>}</>}
     {type === "goal" && <><label>Nome da meta<input name="name" required placeholder="Ex.: Reserva de emergência"/></label><div className="form-grid"><label>Valor da meta<input name="targetAmount" required min="1" step="0.01" type="number"/></label><label>Quanto já guardou<input name="savedAmount" min="0" step="0.01" type="number" defaultValue="0"/></label></div><label>Prazo desejado<input name="dueDate" type="date"/></label></>}
     {type === "commitment" && <><label>Nome<input name="name" required placeholder="Ex.: Fatura do cartão"/></label><div className="form-grid"><label>Tipo<select name="kind"><option value="bill">Conta</option><option value="debt">Dívida/parcelamento</option></select></label><label>Valor da parcela/conta<input name="amount" required min="0.01" step="0.01" type="number"/></label></div><div className="form-grid"><label>Vencimento<input name="dueDate" required type="date" defaultValue={today}/></label><label>Total de parcelas<input name="installmentsTotal" min="1" type="number" placeholder="Opcional"/></label></div></>}
     {type === "driverDay" && <><div className="form-grid"><label>Data<input name="date" required type="date" defaultValue={today}/></label><label>Ganho bruto<input name="grossEarnings" required min="0" step="0.01" type="number" placeholder="0,00"/></label></div><div className="form-grid"><label>Quantidade de corridas<input name="rides" required min="0" type="number" placeholder="0"/></label><label>Horas trabalhadas<input name="hoursWorked" min="0" step="0.1" type="number" placeholder="0"/></label></div><div className="form-grid"><label>KM ao iniciar<input name="odometerStart" required min="0" step="0.1" type="number" placeholder="Ex.: 45210"/></label><label>KM ao finalizar<input name="odometerEnd" required min="0" step="0.1" type="number" placeholder="Ex.: 45342"/></label></div><div className="form-grid"><label>Combustível<input name="fuelCost" min="0" step="0.01" type="number" placeholder="0,00"/></label><label>Manutenção/reserva<input name="maintenanceCost" min="0" step="0.01" type="number" placeholder="0,00"/></label></div><label>Outros custos<input name="otherCost" min="0" step="0.01" type="number" placeholder="0,00"/></label><label>Observação<input name="notes" placeholder="Opcional"/></label></>}
     {type === "card" && <><label>Nome do cartão<input name="name" required placeholder="Ex.: Cartão principal"/></label><div className="form-grid"><label>Últimos 4 números<input name="lastFour" required pattern="[0-9]{4}" maxLength={4} inputMode="numeric" placeholder="1234"/></label><label>Limite total<input name="creditLimit" required min="1" step="0.01" type="number" placeholder="0,00"/></label></div><div className="form-grid"><label>Dia do fechamento<input name="closingDay" required min="1" max="31" type="number" defaultValue="1"/></label><label>Dia do vencimento<input name="dueDay" required min="1" max="31" type="number" defaultValue="10"/></label></div><label>Cor do cartão<select name="color"><option value="blue">Azul</option><option value="black">Preto</option><option value="purple">Roxo</option><option value="green">Verde</option></select></label></>}
+    {type === "asset" && <><label>Nome<input name="name" required placeholder="Ex.: Reserva de emergência"/></label><div className="form-grid"><label>Tipo<select name="kind"><option value="savings">Dinheiro guardado / poupança</option><option value="investment">Investimento</option></select></label><label>Banco ou instituição<input name="institution" placeholder="Ex.: Nubank, Caixa ou corretora"/></label></div><div className="form-grid"><label>Valor aplicado/guardado<input name="principal" required min="0" step="0.01" type="number" placeholder="0,00"/></label><label>Saldo atual<input name="currentBalance" required min="0" step="0.01" type="number" placeholder="0,00"/></label></div><div className="form-grid"><label>Rendimento ao ano (%)<input name="annualRate" min="0" step="0.01" type="number" defaultValue="0"/></label><label>Data da atualização<input name="updatedDate" required type="date" defaultValue={today}/></label></div><p className="installment-note">O rendimento acumulado será calculado pela diferença entre o saldo atual e o valor aplicado.</p></>}
     <div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancelar</button><button className="primary" disabled={saving}>{saving ? "Salvando..." : "Salvar"}</button></div>
   </form></div>;
 }
